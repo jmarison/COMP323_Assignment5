@@ -1,4 +1,4 @@
-### Source - Week 4 - Sprites
+### Source - Sprites
 
 This repository includes source code examples developed for COMP 488.
 
