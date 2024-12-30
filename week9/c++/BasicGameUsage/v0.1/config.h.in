@@ -1,4 +1,0 @@
-#pragma once
-#define PROJECT_VERSION_MAJOR @BasicGameUsage_VERSION_MAJOR@ 
-#define PROJECT_VERSION_MINOR @BasicGameUsage_VERSION_MINOR@ 
-

@@ -1,7 +1,0 @@
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/BasicGameUsage.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/edit_cache.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/rebuild_cache.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/list_install_components.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/install.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/install/local.dir
-/home/ancientlives/Development/gitlab-dev/spire-signpost/dev-examples/cpp-language-examples/game-dev/basic-examples/BasicGameUsage/v0.1/build/CMakeFiles/install/strip.dir

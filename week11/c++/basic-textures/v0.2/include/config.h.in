@@ -1,4 +1,0 @@
-#pragma once
-#define PROJECT_VERSION_MAJOR @BasicTextures_VERSION_MAJOR@ 
-#define PROJECT_VERSION_MINOR @BasicTextures_VERSION_MINOR@ 
-#define RESOURCE_PATH "@RESOURCE_PATH@"
