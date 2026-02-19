@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import random
+#used for audio sfx
+from pathlib import Path
 
 import pygame
 
@@ -139,7 +141,7 @@ class Enemy(pygame.sprite.Sprite):
         self.pos       = pygame.Vector2(waypoint_a)
         self.facing    = 1       
         self.anims = _make_enemy_anims(color)
-        self.state = "walk"
+        self.state = "walk" # walk | chase  
 
         self.image = self.anims[self.state].image
         self.rect  = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
@@ -149,6 +151,7 @@ class Enemy(pygame.sprite.Sprite):
             return
         self.state = new_state
         self.anims[self.state].reset()
+
 
     def update(self, dt: float, player_pos: pygame.Vector2) -> None:  
         to_player = player_pos - self.pos
@@ -175,7 +178,7 @@ class Enemy(pygame.sprite.Sprite):
         self.pos += direction * speed * dt
 
         self.anims[self.state].update(dt)
-        center     = self.rect.center
+        center = self.rect.center
         base_image = self.anims[self.state].image
         # Flip horizontally based on direciton facing
         self.image = pygame.transform.flip(base_image, self.facing < 0, False)
@@ -242,6 +245,17 @@ class Game:
 
     def __init__(self) -> None:
         self.palette = Palette()
+
+        # Audio setup
+        base_path = Path(__file__).parent
+        self.coin_sfx = pygame.mixer.Sound(str(base_path / "media" / "coin_sfx.mp3"))
+        self.coin_sfx.set_volume(0.5)
+        self.hurt_sfx = pygame.mixer.Sound(str(base_path / "media" / "hurt_sfx.mp3"))
+        self.hurt_sfx.set_volume(0.5)
+        self.alert_sfx = pygame.mixer.Sound(str(base_path / "media" / "alert.mp3"))
+        self.alert_sfx.set_volume(0.5)
+        self.muted = False
+
 
         self.screen = pygame.display.set_mode((self.SCREEN_W, self.SCREEN_H))
         self.font = pygame.font.SysFont(None, 22)
@@ -377,6 +391,10 @@ class Game:
         if event.key == pygame.K_4:
             self.cue_particles = not self.cue_particles
             return
+        
+        if event.key == pygame.K_m:
+            self.muted = not self.muted
+            return
 
         if self.state in {"title", "gameover"} and event.key == pygame.K_SPACE:
             self._reset_level(keep_state=True)
@@ -450,6 +468,9 @@ class Game:
         if self.cue_particles:
             self._spawn_particles(coin_rect.center, color=self.palette.particle, count=18)
 
+        if not self.muted:
+            self.coin_sfx.play()
+
     def _cue_hit(self, source_rect: pygame.Rect) -> None:
         if self.cue_flash:
             self.player.flash_for = 0.18
@@ -462,6 +483,9 @@ class Game:
 
         if self.cue_particles:
             self._spawn_particles(self.player.rect.center, color=self.palette.hazard, count=26)
+        
+        if not self.muted:
+            self.hurt_sfx.play()
 
     def _apply_damage(self, source_rect: pygame.Rect) -> None:
         if self.player.is_invincible:
@@ -521,7 +545,10 @@ class Game:
         # update and check collisions
         player_pos = pygame.Vector2(self.player.rect.center)
         for enemy in self.enemies:
+            was_chasing = enemy.state == "chase"
             enemy.update(dt, player_pos)
+            if enemy.state == "chase" and not was_chasing and not self.muted:
+                self.alert_sfx.play()
         for enemy in pygame.sprite.spritecollide(self.player, self.enemies, dokill=False):
             self._apply_damage(enemy.rect)
 
@@ -552,6 +579,8 @@ class Game:
         self._draw_text(f"HP {self.player.hp}   Score {self.player.score}", (12, 10), self.palette.text)
         self._draw_text(cues, (12, 32), self.palette.subtle)
 
+        if self.muted:
+            self._draw_text("MUTED - [M] to unmute", (self.SCREEN_W - 180, 10), self.palette.subtle)
         cam = self._camera_offset()
 
         pygame.draw.rect(self.screen, self.palette.panel, self.playfield)
@@ -591,6 +620,8 @@ class Game:
                 pygame.draw.rect(self.screen, pygame.Color("#bf616a"), hz.rect.move(cam), 2)
             for enemy in self.enemies:
                 pygame.draw.rect(self.screen, pygame.Color("#b48ead"), enemy.rect.move(cam), 2)
+                #detection radius
+                pygame.draw.circle(self.screen, pygame.Color("#b48ead"), (int(enemy.pos.x) + cam[0], int(enemy.pos.y) + cam[1]), int(ENEMY_DETECT_DIST), 1)
 
         if self.state == "title":
             self._draw_centered("Press Space to Start", y=self.playfield.centery, color=self.palette.text)
