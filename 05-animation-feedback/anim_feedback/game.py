@@ -18,6 +18,7 @@ class Palette:
     hazard: pygame.Color = field(default_factory=lambda: pygame.Color("#bf616a"))
     particle: pygame.Color = field(default_factory=lambda: pygame.Color("#a3be8c"))
     wall: pygame.Color = field(default_factory=lambda: pygame.Color("#4c566a"))
+    enemy: pygame.Color = field(default_factory=lambda: pygame.Color("#b48ead"))
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -115,6 +116,71 @@ class Hazard(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(self.base, self.angle)
         self.rect = self.image.get_rect(center=center)
 
+# enemy - normal speed, alerted speed (when player enters detect dist.) and detect distance
+# which is the "alert" range for the enemy
+ENEMY_PATROL_SPEED = 90.0
+ENEMY_CHASE_SPEED  = 160.0
+ENEMY_DETECT_DIST  = 180.0   # pixels — switches to chase state
+
+
+class Enemy(pygame.sprite.Sprite):
+
+    def __init__(
+        self,
+        waypoint_a: tuple[int, int],
+        waypoint_b: tuple[int, int],
+        *,
+        color: pygame.Color,
+    ) -> None:
+        super().__init__()
+
+        self.waypoints = [pygame.Vector2(waypoint_a), pygame.Vector2(waypoint_b)]
+        self.wp_index  = 1     
+        self.pos       = pygame.Vector2(waypoint_a)
+        self.facing    = 1       
+        self.anims = _make_enemy_anims(color)
+        self.state = "walk"
+
+        self.image = self.anims[self.state].image
+        self.rect  = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
+
+    def _set_state(self, new_state: str) -> None:
+        if new_state == self.state:
+            return
+        self.state = new_state
+        self.anims[self.state].reset()
+
+    def update(self, dt: float, player_pos: pygame.Vector2) -> None:  
+        to_player = player_pos - self.pos
+        dist      = to_player.length()
+
+        if dist < ENEMY_DETECT_DIST:
+            # Chase state 
+            self._set_state("chase")
+            speed     = ENEMY_CHASE_SPEED
+            direction = to_player.normalize() if dist > 0 else pygame.Vector2(1, 0)
+        else:
+            # Walk state - serves as a patrol 
+            self._set_state("walk")
+            speed     = ENEMY_PATROL_SPEED
+            to_wp     = self.waypoints[self.wp_index] - self.pos
+            if to_wp.length() < 4:
+                self.wp_index = 1 - self.wp_index
+                to_wp = self.waypoints[self.wp_index] - self.pos
+            direction = to_wp.normalize() if to_wp.length() > 0 else pygame.Vector2(1, 0)
+
+        if direction.x != 0:
+            self.facing = 1 if direction.x > 0 else -1
+
+        self.pos += direction * speed * dt
+
+        self.anims[self.state].update(dt)
+        center     = self.rect.center
+        base_image = self.anims[self.state].image
+        # Flip horizontally based on direciton facing
+        self.image = pygame.transform.flip(base_image, self.facing < 0, False)
+        self.rect  = self.image.get_rect(center=(int(self.pos.x), int(self.pos.y)))
+
 
 class Player(pygame.sprite.Sprite):
     def __init__(
@@ -203,6 +269,7 @@ class Game:
         self.walls: pygame.sprite.Group[Wall] = pygame.sprite.Group()
         self.coins: pygame.sprite.Group[Coin] = pygame.sprite.Group()
         self.hazards: pygame.sprite.Group[Hazard] = pygame.sprite.Group()
+        self.enemies: pygame.sprite.Group[Enemy] = pygame.sprite.Group()
 
         self.player = Player(self.playfield.center, color=self.palette.player)
         self.all_sprites.add(self.player)
@@ -219,6 +286,7 @@ class Game:
         self.walls.empty()
         self.coins.empty()
         self.hazards.empty()
+        self.enemies.empty()
         self.particles.clear()
 
         self.player = Player(self.playfield.center, color=self.palette.player)
@@ -236,13 +304,27 @@ class Game:
         add_wall(pygame.Rect(self.playfield.right - t, self.playfield.top, t, self.playfield.height))
 
         add_wall(pygame.Rect(self.playfield.left + 180, self.playfield.top + 110, 18, 240))
-        add_wall(pygame.Rect(self.playfield.left + 420, self.playfield.top + 40, 18, 240))
+        add_wall(pygame.Rect(self.playfield.left + 420, self.playfield.top + 140, 18, 240))
         add_wall(pygame.Rect(self.playfield.left + 560, self.playfield.top + 240, 260, 18))
 
         hz1 = Hazard((self.playfield.centerx + 190, self.playfield.centery - 80), color=self.palette.hazard)
         hz2 = Hazard((self.playfield.centerx - 150, self.playfield.centery + 140), color=self.palette.hazard, spin_speed_dps=260)
         self.hazards.add(hz1, hz2)
         self.all_sprites.add(hz1, hz2)
+
+        #  Enemies 
+        e1 = Enemy(
+            (self.playfield.left + 60,  self.playfield.top + 200),
+            (self.playfield.left + 360, self.playfield.top + 200),
+            color=self.palette.enemy,
+        )
+        e2 = Enemy(
+            (self.playfield.right - 60,  self.playfield.bottom - 100),
+            (self.playfield.right - 300, self.playfield.bottom - 100),
+            color=self.palette.enemy,
+        )
+        self.enemies.add(e1, e2)
+        self.all_sprites.add(e1, e2)
 
         for _ in range(10):
             for __ in range(120):
@@ -436,6 +518,13 @@ class Game:
         for hz in pygame.sprite.spritecollide(self.player, self.hazards, dokill=False):
             self._apply_damage(hz.rect)
 
+        # update and check collisions
+        player_pos = pygame.Vector2(self.player.rect.center)
+        for enemy in self.enemies:
+            enemy.update(dt, player_pos)
+        for enemy in pygame.sprite.spritecollide(self.player, self.enemies, dokill=False):
+            self._apply_damage(enemy.rect)
+
         self.coins.update(dt)
         self.hazards.update(dt)
         self.player.update(dt)
@@ -476,6 +565,9 @@ class Game:
         for hz in self.hazards:
             self.screen.blit(hz.image, hz.rect.move(cam))
 
+        for enemy in self.enemies:
+            self.screen.blit(enemy.image, enemy.rect.move(cam))
+
         player_image = self.player.image
         if self.cue_flash and self.player.flash_for > 0:
             player_image = player_image.copy()
@@ -497,6 +589,8 @@ class Game:
                 pygame.draw.rect(self.screen, pygame.Color("#ebcb8b"), coin.rect.move(cam), 2)
             for hz in self.hazards:
                 pygame.draw.rect(self.screen, pygame.Color("#bf616a"), hz.rect.move(cam), 2)
+            for enemy in self.enemies:
+                pygame.draw.rect(self.screen, pygame.Color("#b48ead"), enemy.rect.move(cam), 2)
 
         if self.state == "title":
             self._draw_centered("Press Space to Start", y=self.playfield.centery, color=self.palette.text)
@@ -511,6 +605,7 @@ class Game:
         s = self.big_font.render(text, True, color)
         r = s.get_rect(center=(self.playfield.centerx, y))
         self.screen.blit(s, r)
+
 
 
 def _make_coin_frames(color: pygame.Color) -> list[pygame.Surface]:
@@ -602,14 +697,72 @@ def _draw_player_frame(color: pygame.Color, *, leg_phase: int, eye_open: bool) -
     dx = 6
     phase = leg_phase % 4
     left_off = (-dx, 4) if phase in {0, 3} else (-dx, 1)
-    right_off = (dx, 4) if phase in {1, 2} else (dx, 1)
+    right_off = (dx, 4) if phase in {1, 2} else (dx,  1)
 
-    pygame.draw.line(surf, pygame.Color("#2e3440"), (w // 2 - 6, leg_y), (w // 2 - 6 + left_off[0] // 3, leg_y + left_off[1]), 4)
+    pygame.draw.line(surf, pygame.Color("#2e3440"), (w // 2 - 6, leg_y), (w // 2 - 6 + left_off[0]  // 3, leg_y + left_off[1]),  4)
     pygame.draw.line(surf, pygame.Color("#2e3440"), (w // 2 + 6, leg_y), (w // 2 + 6 + right_off[0] // 3, leg_y + right_off[1]), 4)
 
     # Arms
     arm_y = body.top + 10
-    pygame.draw.line(surf, pygame.Color("#2e3440"), (body.left + 3, arm_y), (body.left - 6, arm_y + 3), 4)
+    pygame.draw.line(surf, pygame.Color("#2e3440"), (body.left + 3, arm_y), (body.left  - 6, arm_y + 3), 4)
     pygame.draw.line(surf, pygame.Color("#2e3440"), (body.right - 3, arm_y), (body.right + 6, arm_y + 3), 4)
+
+    return surf
+
+
+
+def _make_enemy_anims(color: pygame.Color) -> dict[str, Animation]:
+    # walk (slow leg cycle) and chase (fast leg cycle, angry eyebrows)
+    walk_frames = [
+        _draw_enemy_frame(color, leg_phase=p, angry=False) for p in range(4)
+    ]
+    chase_frames = [
+        _draw_enemy_frame(color, leg_phase=p, angry=True) for p in range(4)
+    ]
+    return {
+        "walk":  Animation(walk_frames,  fps=6.0),
+        "chase": Animation(chase_frames, fps=12.0),
+    }
+
+
+def _draw_enemy_frame(color: pygame.Color, *, leg_phase: int, angry: bool) -> pygame.Surface:
+    w, h = 40, 42
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+
+    outline = pygame.Color("#1a1a2e")
+
+    # Body 
+    body = pygame.Rect(0, 0, 28, 22)
+    body.center = (w // 2, h // 2 + 6)
+    pygame.draw.rect(surf, color, body, border_radius=6)
+    pygame.draw.rect(surf, outline, body, 2, border_radius=6)
+
+    # Head
+    hc = (w // 2, h // 2 - 8)
+    pygame.draw.circle(surf, color, hc, 11)
+    pygame.draw.circle(surf, outline, hc, 11, 2)
+
+    # Eyes
+    eye_col = pygame.Color("#2e3440")
+    pygame.draw.circle(surf, eye_col, (hc[0] - 4, hc[1]), 2)
+    pygame.draw.circle(surf, eye_col, (hc[0] + 4, hc[1]), 2)
+
+    # Angry brows (angled) when chasing
+    brow_col = outline
+    if angry:
+        pygame.draw.line(surf, brow_col, (hc[0] - 7, hc[1] - 6), (hc[0] - 1, hc[1] - 4), 2)
+        pygame.draw.line(surf, brow_col, (hc[0] + 7, hc[1] - 6), (hc[0] + 1, hc[1] - 4), 2)
+    else:
+        # flat brows for non-chasing state
+        pygame.draw.line(surf, brow_col, (hc[0] - 7, hc[1] - 5), (hc[0] - 1, hc[1] - 5), 2)
+        pygame.draw.line(surf, brow_col, (hc[0] + 1, hc[1] - 5), (hc[0] + 7, hc[1] - 5), 2)
+
+    # Legs
+    leg_y = body.bottom + 1
+    phase     = leg_phase % 4
+    left_off  = (-4, 4) if phase in {0, 3} else (-4, 1)
+    right_off = ( 4, 4) if phase in {1, 2} else ( 4, 1)
+    pygame.draw.line(surf, outline, (w // 2 - 6, leg_y), (w // 2 - 6 + left_off[0]  // 2, leg_y + left_off[1]),  4)
+    pygame.draw.line(surf, outline, (w // 2 + 6, leg_y), (w // 2 + 6 + right_off[0] // 2, leg_y + right_off[1]), 4)
 
     return surf
